@@ -1,9 +1,8 @@
-export const UNISWAP_V3_SWAPROUTER_ADDRESS = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
-// export const UNISWAP_V3_SWAPCALLBACK =
-//   " function uniswapV3SwapCallback(int256 amount0Delta,int256 amount1Delta,bytes data)";
+export const UNISWAP_V3_SWAPROUTER_ADDRESS = "0xe592427a0aece92de3edee1f18e0157c05861564";
+export const UNISWAP_V3_SWAPROUTER2_ADDRESS = "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45";
+
 export const ERC20_TRANSFER_EVENT = "event Transfer(address indexed from, address indexed to, uint256 value)";
 export const ERC20_CONTRACT_ABI = [
-  // Some details about the token
   "function name() view returns (string)",
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
