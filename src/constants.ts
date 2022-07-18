@@ -1,9 +1,17 @@
-export const UNISWAP_V3_SWAPROUTER_ADDRESS = "0xe592427a0aece92de3edee1f18e0157c05861564";
-export const UNISWAP_V3_SWAPROUTER2_ADDRESS = "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45";
+import { ethers } from "forta-agent";
 
-export const ERC20_TRANSFER_EVENT = "event Transfer(address indexed from, address indexed to, uint256 value)";
+export const UNISWAP_V3_FACTORY = "0x1f98431c8ad98523631ae4a59f267346ea31f984";
+
+export const SWAP_EVENT =
+  "event Swap(address indexed sender,address indexed recipient,int256 amount0,int256 amount1,uint160 sqrtPriceX96,uint128 liquidity,int24 tick)";
+
 export const ERC20_CONTRACT_ABI = [
   "function name() view returns (string)",
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
+];
+export const UNISWAP_V3_POOL_ABI = [
+  "function factory() external view returns (address)",
+  "function token0() external view returns (address)",
+  "function token1() external view returns (address)",
 ];

@@ -1,44 +1,44 @@
 import { Finding, getEthersProvider, HandleTransaction, TransactionEvent } from "forta-agent";
 import {
-  transferEvent,
+  checkUniswapLiquidityPools,
   createFindingMultihop,
   createFindingSimpleSwap,
-  generateTransferFromInvocation,
+  generateSwap,
+  swap,
 } from "./agent.utils";
-import { ERC20_TRANSFER_EVENT, UNISWAP_V3_SWAPROUTER2_ADDRESS, UNISWAP_V3_SWAPROUTER_ADDRESS } from "./constants";
-import TokenDataFetcher from "./token.data.fetcher";
+import { SWAP_EVENT } from "./constants";
+import DataFetcher from "./data.fetcher";
 
-const dataFetcher: TokenDataFetcher = new TokenDataFetcher(getEthersProvider());
+export const provideHandleTransaction = (provider: any): HandleTransaction => {
+  const dataFetcher: DataFetcher = new DataFetcher(provider);
 
-export const provideHandleTransaction = (tokenDataFetcher: TokenDataFetcher): HandleTransaction => {
   return async (txEvent: TransactionEvent) => {
     const findings: Finding[] = [];
 
-    if (
-      txEvent.to?.toLowerCase() != UNISWAP_V3_SWAPROUTER_ADDRESS &&
-      txEvent.to?.toLowerCase() != UNISWAP_V3_SWAPROUTER2_ADDRESS
-    )
-      return findings;
+    const tokenSwapInvocations = txEvent.filterLog(SWAP_EVENT);
+    const tokenSwapCount = tokenSwapInvocations.length;
 
-    const tokenTransferInvocations = txEvent.filterLog(ERC20_TRANSFER_EVENT);
-    const tokenSwapCount = tokenTransferInvocations.length / 2;
     if (tokenSwapCount == 0) return findings;
-    let transfers: transferEvent[] = [];
+
+    const areUniswapLiqPools = await checkUniswapLiquidityPools(tokenSwapInvocations, dataFetcher);
+    if (!areUniswapLiqPools) return findings;
+
+    let swaps: swap[] = [];
     await Promise.all(
-      tokenTransferInvocations.map(async (tokenTransferInvocation) => {
-        transfers.push(await generateTransferFromInvocation(tokenTransferInvocation, txEvent, tokenDataFetcher));
+      tokenSwapInvocations.map(async (tokenSwapInvocation) => {
+        swaps.push(await generateSwap(tokenSwapInvocation, dataFetcher));
       })
     );
 
     if (tokenSwapCount == 1) {
-      findings.push(createFindingSimpleSwap(transfers));
+      findings.push(createFindingSimpleSwap(swaps[0]));
     } else {
-      findings.push(createFindingMultihop(transfers, txEvent.from.toLowerCase()));
+      findings.push(createFindingMultihop(swaps));
     }
 
     return findings;
   };
 };
 export default {
-  handleTransaction: provideHandleTransaction(dataFetcher),
+  handleTransaction: provideHandleTransaction(getEthersProvider()),
 };

@@ -1,14 +1,14 @@
 import { ethers } from "ethers";
-import { Finding, FindingSeverity, FindingType, LogDescription, TransactionEvent } from "forta-agent";
-import { UNISWAP_V3_SWAPROUTER2_ADDRESS, UNISWAP_V3_SWAPROUTER_ADDRESS } from "./constants";
-import TokenDataFetcher from "./token.data.fetcher";
-
-export type transferEvent = {
-  from: string;
-  to: string;
-  value: string;
-  isTokenIn: boolean;
-  tokenData: token;
+import { Finding, FindingSeverity, FindingType, LogDescription } from "forta-agent";
+import DataFetcher from "./data.fetcher";
+export type swap = {
+  sender: string;
+  recipient: string;
+  liquidityPool: string;
+  tokenOut: token;
+  amountOut: BigInt;
+  tokenIn: token;
+  amountIn: BigInt;
 };
 
 export type token = {
@@ -18,47 +18,51 @@ export type token = {
   decimals: string;
 };
 
-export const generateTransferFromInvocation = async (
-  tokenTransferInvocation: LogDescription,
-  txEvent: TransactionEvent,
-  tokenDataFetcher: TokenDataFetcher
-): Promise<transferEvent> => {
-  const tokenData: token = {
-    address: tokenTransferInvocation.address,
-    symbol: await tokenDataFetcher.getTokenSymbol(tokenTransferInvocation.address),
-    name: await tokenDataFetcher.getTokenName(tokenTransferInvocation.address),
-    decimals: await tokenDataFetcher.getTokenDecimals(tokenTransferInvocation.address),
-  };
-  const transfer: transferEvent = {
-    from: tokenTransferInvocation.args.from,
-    to: tokenTransferInvocation.args.to,
-    value: tokenTransferInvocation.args.value,
-    isTokenIn: txEvent.from.toLowerCase() == tokenTransferInvocation.args.to.toLowerCase(),
-    tokenData: tokenData,
-  };
-  return transfer;
+export const checkUniswapLiquidityPools = async (
+  tokenSwapInvocations: LogDescription[],
+  dataFetcher: DataFetcher
+): Promise<boolean> => {
+  for (let i = 0; i < tokenSwapInvocations.length; i++) {
+    const tokenSwapInvocation = tokenSwapInvocations[i];
+    const isUniswap = await dataFetcher.checkLiquidityPool(tokenSwapInvocation.address);
+    if (!isUniswap) return false;
+  }
+  return true;
 };
 
-//sort transfer events as such [transferOut,corresponding TransferIn,...] to trace the swaps
-export const sortTransfers = (msgSender: string, transferEvents: transferEvent[]): transferEvent[] => {
-  const sortedTransfers: any = [];
+//create a swap object from swap event
+export const generateSwap = async (tokenSwapInvocation: LogDescription, dataFetcher: DataFetcher): Promise<swap> => {
+  const liquidityPoolData = await dataFetcher.fetchLiquidityPool(tokenSwapInvocation.address);
+  const token0 = await dataFetcher.getTokenData(liquidityPoolData.token0);
+  const token1 = await dataFetcher.getTokenData(liquidityPoolData.token1);
 
-  //first element is the transfer from the msgSender
-  sortedTransfers.push(
-    transferEvents.find((transfer) => {
-      return transfer.from.toLowerCase() == msgSender;
-    })
-  );
-
-  for (let i = 0; i < transferEvents.length - 1; i++) {
-    sortedTransfers.push(
-      transferEvents.find((transfer) => {
-        return transfer.from.toLowerCase() == sortedTransfers[sortedTransfers.length - 1].to.toLowerCase();
-      })
-    );
+  let tokenOut: token;
+  let tokenIn: token;
+  let amountOut: bigint;
+  let amountIn: bigint;
+  if (tokenSwapInvocation.args.amount0 > 0) {
+    tokenOut = token0;
+    tokenIn = token1;
+    amountOut = tokenSwapInvocation.args.amount0;
+    amountIn = tokenSwapInvocation.args.amount1.abs();
+  } else {
+    tokenOut = token1;
+    tokenIn = token0;
+    amountOut = tokenSwapInvocation.args.amount1;
+    amountIn = tokenSwapInvocation.args.amount0.abs();
   }
 
-  return sortedTransfers;
+  const _swap: swap = {
+    sender: tokenSwapInvocation.args.sender,
+    recipient: tokenSwapInvocation.args.recipient,
+    liquidityPool: tokenSwapInvocation.address,
+    tokenOut: tokenOut,
+    tokenIn: tokenIn,
+    amountOut: amountOut,
+    amountIn: amountIn,
+  };
+
+  return _swap;
 };
 
 export const createDescription = (
@@ -72,76 +76,50 @@ export const createDescription = (
   } for ${ethers.utils.formatUnits(tokenInValue, tokenIn.decimals)}-${tokenIn.symbol}`;
 };
 
-export const createFindingSimpleSwap = (transferEvents: transferEvent[]): Finding => {
-  let transferTokenIn: transferEvent;
-  let transferTokenOut: transferEvent;
-  if (transferEvents[0].isTokenIn) {
-    transferTokenIn = transferEvents[0];
-    transferTokenOut = transferEvents[1];
-  } else {
-    transferTokenOut = transferEvents[0];
-    transferTokenIn = transferEvents[1];
-  }
+export const createFindingSimpleSwap = (swap: swap): Finding => {
   return Finding.fromObject({
     name: "Uniswap V3 Simple Swap",
-    description: createDescription(
-      transferTokenIn.tokenData,
-      transferTokenOut.tokenData,
-      transferTokenIn.value,
-      transferTokenOut.value
-    ),
+    description: createDescription(swap.tokenIn, swap.tokenOut, swap.amountIn.toString(), swap.amountOut.toString()),
     alertId: "UNISWAPV3-1",
     type: FindingType.Info,
     severity: FindingSeverity.Info,
     protocol: "Uniswap V3",
     metadata: {
-      beneficiary: transferTokenIn.to,
-      tokenOut: transferTokenOut.tokenData.name,
-      tookenIn: transferTokenIn.tokenData.name,
-      amountOut: transferTokenOut.value.toString(),
-      amountIn: transferTokenIn.value.toString(),
-      liquidityPool: transferTokenIn.from,
+      beneficiary: swap.recipient,
+      tokenOut: swap.tokenOut.name,
+      tookenIn: swap.tokenIn.name,
+      amountOut: swap.amountOut.toString(),
+      amountIn: swap.amountIn.toString(),
+      liquidityPool: swap.liquidityPool,
     },
   });
 };
 
-export const createFindingMultihop = (transferEvents: transferEvent[], msgSender: string): Finding => {
+export const createFindingMultihop = (swaps: swap[]): Finding => {
   let description: string = ``;
-  const sortedTransfers: transferEvent[] = sortTransfers(msgSender, transferEvents);
-  for (let i = 0; i <= sortedTransfers.length / 2; i += 2) {
+  swaps.forEach((swap) => {
     description = description.concat(
-      createDescription(
-        sortedTransfers[i + 1].tokenData,
-        sortedTransfers[i].tokenData,
-        sortedTransfers[i + 1].value,
-        sortedTransfers[i].value
-      ),
-      `     `
+      createDescription(swap.tokenIn, swap.tokenOut, swap.amountIn.toString(), swap.amountOut.toString())
     );
-  }
+  });
   return Finding.fromObject({
-    name: "Uniswap V3 multihop",
+    name: "Uniswap V3 Multihop Swap",
     description: description,
     alertId: "UNISWAPV3-2",
     type: FindingType.Info,
     severity: FindingSeverity.Low,
     protocol: "Uniswap V3",
     metadata: {
-      beneficiary: msgSender,
-      liquidityPools: sortedTransfers
-        .map((transfer) => {
-          return transfer.to;
-        })
-        .filter((address) => {
-          return ![msgSender, UNISWAP_V3_SWAPROUTER2_ADDRESS, UNISWAP_V3_SWAPROUTER2_ADDRESS].includes(
-            address.toLowerCase()
-          );
+      beneficiary: swaps[0].sender,
+      tokenOut: swaps[0].tokenOut.name,
+      tokenIn: swaps[swaps.length - 1].tokenIn.name,
+      amountOut: swaps[0].amountOut.toString(),
+      amountIn: swaps[swaps.length - 1].amountIn.toString(),
+      liquidityPools: swaps
+        .map((swap) => {
+          return swap.liquidityPool;
         })
         .toString(),
-      tokenOut: sortedTransfers[0].tokenData.name,
-      tokenIn: sortedTransfers[sortedTransfers.length - 1].tokenData.name,
-      amountIn: sortedTransfers[0].value,
-      amountOut: sortedTransfers[sortedTransfers.length - 1].value,
     },
   });
 };

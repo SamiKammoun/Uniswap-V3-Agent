@@ -25,6 +25,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@types/lru-cache": "^7.10.10",
     "forta-agent": "^0.1.8",
     "forta-agent-tools": "^2.3.1"
   },
