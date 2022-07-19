@@ -31,9 +31,9 @@ export const provideHandleTransaction = (provider: any): HandleTransaction => {
     );
 
     if (tokenSwapCount == 1) {
-      findings.push(createFindingSimpleSwap(swaps[0]));
+      findings.push(createFindingSimpleSwap(txEvent.from, swaps[0]));
     } else {
-      findings.push(createFindingMultihop(swaps));
+      findings.push(createFindingMultihop(txEvent.from, swaps));
     }
 
     return findings;

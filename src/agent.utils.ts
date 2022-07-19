@@ -76,7 +76,7 @@ export const createDescription = (
   } for ${ethers.utils.formatUnits(tokenInValue, tokenIn.decimals)}-${tokenIn.symbol}`;
 };
 
-export const createFindingSimpleSwap = (swap: swap): Finding => {
+export const createFindingSimpleSwap = (msgSender: string, swap: swap): Finding => {
   return Finding.fromObject({
     name: "Uniswap V3 Simple Swap",
     description: createDescription(swap.tokenIn, swap.tokenOut, swap.amountIn.toString(), swap.amountOut.toString()),
@@ -85,7 +85,7 @@ export const createFindingSimpleSwap = (swap: swap): Finding => {
     severity: FindingSeverity.Info,
     protocol: "Uniswap V3",
     metadata: {
-      beneficiary: swap.recipient,
+      beneficiary: msgSender,
       tokenOut: swap.tokenOut.name,
       tookenIn: swap.tokenIn.name,
       amountOut: swap.amountOut.toString(),
@@ -95,11 +95,12 @@ export const createFindingSimpleSwap = (swap: swap): Finding => {
   });
 };
 
-export const createFindingMultihop = (swaps: swap[]): Finding => {
+export const createFindingMultihop = (msgSender: string, swaps: swap[]): Finding => {
   let description: string = ``;
   swaps.forEach((swap) => {
     description = description.concat(
-      createDescription(swap.tokenIn, swap.tokenOut, swap.amountIn.toString(), swap.amountOut.toString())
+      createDescription(swap.tokenIn, swap.tokenOut, swap.amountIn.toString(), swap.amountOut.toString()),
+      "  |"
     );
   });
   return Finding.fromObject({
@@ -110,7 +111,7 @@ export const createFindingMultihop = (swaps: swap[]): Finding => {
     severity: FindingSeverity.Low,
     protocol: "Uniswap V3",
     metadata: {
-      beneficiary: swaps[0].sender,
+      beneficiary: msgSender,
       tokenOut: swaps[0].tokenOut.name,
       tokenIn: swaps[swaps.length - 1].tokenIn.name,
       amountOut: swaps[0].amountOut.toString(),
