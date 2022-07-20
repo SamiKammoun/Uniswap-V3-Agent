@@ -20,7 +20,7 @@ This agent detects when a swap happens on Uniswap-V3
     - liquidityPool (address)
     - hash
 
-- UNISWAPV3-2
+- UNISWAPV3-2 (Could be improved by adding more data)
 
   - Fired when a multi hop is detected on Uniswap V3
   - Severity is always set to "Low"
