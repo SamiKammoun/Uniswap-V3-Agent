@@ -16,6 +16,7 @@ export const provideHandleTransaction = (provider: any): HandleTransaction => {
     const findings: Finding[] = [];
 
     const tokenSwapInvocations = txEvent.filterLog(SWAP_EVENT);
+
     const tokenSwapCount = tokenSwapInvocations.length;
 
     if (tokenSwapCount == 0) return findings;
@@ -31,9 +32,9 @@ export const provideHandleTransaction = (provider: any): HandleTransaction => {
     );
 
     if (tokenSwapCount == 1) {
-      findings.push(createFindingSimpleSwap(txEvent.from, swaps[0]));
+      findings.push(createFindingSimpleSwap(txEvent, swaps[0]));
     } else {
-      findings.push(createFindingMultihop(txEvent.from, swaps));
+      findings.push(createFindingMultihop(txEvent, swaps));
     }
 
     return findings;

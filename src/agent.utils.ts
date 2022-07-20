@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { Finding, FindingSeverity, FindingType, LogDescription } from "forta-agent";
+import { Finding, FindingSeverity, FindingType, LogDescription, TransactionEvent } from "forta-agent";
 import DataFetcher from "./data.fetcher";
 export type swap = {
   sender: string;
@@ -18,6 +18,7 @@ export type token = {
   decimals: string;
 };
 
+//check if all liquidity pools are UniswapV3
 export const checkUniswapLiquidityPools = async (
   tokenSwapInvocations: LogDescription[],
   dataFetcher: DataFetcher
@@ -76,7 +77,7 @@ export const createDescription = (
   } for ${ethers.utils.formatUnits(tokenInValue, tokenIn.decimals)}-${tokenIn.symbol}`;
 };
 
-export const createFindingSimpleSwap = (msgSender: string, swap: swap): Finding => {
+export const createFindingSimpleSwap = (txEvent: TransactionEvent, swap: swap): Finding => {
   return Finding.fromObject({
     name: "Uniswap V3 Simple Swap",
     description: createDescription(swap.tokenIn, swap.tokenOut, swap.amountIn.toString(), swap.amountOut.toString()),
@@ -85,42 +86,33 @@ export const createFindingSimpleSwap = (msgSender: string, swap: swap): Finding 
     severity: FindingSeverity.Info,
     protocol: "Uniswap V3",
     metadata: {
-      beneficiary: msgSender,
+      beneficiary: txEvent.from,
       tokenOut: swap.tokenOut.name,
       tookenIn: swap.tokenIn.name,
       amountOut: swap.amountOut.toString(),
       amountIn: swap.amountIn.toString(),
       liquidityPool: swap.liquidityPool,
+      hash: txEvent.hash,
     },
   });
 };
 
-export const createFindingMultihop = (msgSender: string, swaps: swap[]): Finding => {
-  let description: string = ``;
-  swaps.forEach((swap) => {
-    description = description.concat(
-      createDescription(swap.tokenIn, swap.tokenOut, swap.amountIn.toString(), swap.amountOut.toString()),
-      "  |"
-    );
-  });
+export const createFindingMultihop = (txEvent: TransactionEvent, swaps: swap[]): Finding => {
   return Finding.fromObject({
     name: "Uniswap V3 Multihop Swap",
-    description: description,
+    description: "Detected Multihop on UniswapV3",
     alertId: "UNISWAPV3-2",
     type: FindingType.Info,
     severity: FindingSeverity.Low,
     protocol: "Uniswap V3",
     metadata: {
-      beneficiary: msgSender,
-      tokenOut: swaps[0].tokenOut.name,
-      tokenIn: swaps[swaps.length - 1].tokenIn.name,
-      amountOut: swaps[0].amountOut.toString(),
-      amountIn: swaps[swaps.length - 1].amountIn.toString(),
+      beneficiary: txEvent.from,
       liquidityPools: swaps
         .map((swap) => {
           return swap.liquidityPool;
         })
         .toString(),
+      hash: txEvent.hash,
     },
   });
 };

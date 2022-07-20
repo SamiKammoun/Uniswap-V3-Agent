@@ -15,3 +15,4 @@ export const UNISWAP_V3_POOL_ABI = [
   "function token0() external view returns (address)",
   "function token1() external view returns (address)",
 ];
+export const SWAP_EVENT_SIGNATURE = "Swap(address,address,int256,int256,uint160,uint128)";
