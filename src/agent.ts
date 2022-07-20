@@ -6,7 +6,7 @@ import {
   generateSwap,
   swap,
 } from "./agent.utils";
-import { SWAP_EVENT } from "./constants";
+import { UNISWAP_V3_POOL_ABI } from "./constants";
 import DataFetcher from "./data.fetcher";
 
 export const provideHandleTransaction = (provider: any): HandleTransaction => {
@@ -15,7 +15,7 @@ export const provideHandleTransaction = (provider: any): HandleTransaction => {
   return async (txEvent: TransactionEvent) => {
     const findings: Finding[] = [];
 
-    const tokenSwapInvocations = txEvent.filterLog(SWAP_EVENT);
+    const tokenSwapInvocations = txEvent.filterLog(UNISWAP_V3_POOL_ABI[0]);
 
     const tokenSwapCount = tokenSwapInvocations.length;
 

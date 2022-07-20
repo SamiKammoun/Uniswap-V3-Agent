@@ -1,10 +1,11 @@
 import { ethers, Finding, FindingSeverity, FindingType, HandleTransaction, TransactionEvent } from "forta-agent";
 import { provideHandleTransaction } from "./agent";
 import { createAddress, MockEthersProvider, TestTransactionEvent } from "forta-agent-tools/lib/tests";
-import { ERC20_CONTRACT_ABI, SWAP_EVENT_SIGNATURE, UNISWAP_V3_FACTORY, UNISWAP_V3_POOL_ABI } from "./constants";
+import { ERC20_CONTRACT_ABI, UNISWAP_V3_FACTORY, UNISWAP_V3_POOL_ABI } from "./constants";
 import { encodeParameters } from "forta-agent-tools";
 import { createDescription, token } from "./agent.utils";
 import { BigNumber } from "ethers";
+const iface = new ethers.utils.Interface(UNISWAP_V3_POOL_ABI);
 const mockContractCalls = (
   mockProvider: MockEthersProvider,
   liqPoolAddress: string,
@@ -29,21 +30,16 @@ const mockContractCalls = (
 };
 
 const mockEvent = (tx: TestTransactionEvent, amount0: number, amount1: number, liqPoolAddress: string) => {
-  tx.addEventLog(
-    SWAP_EVENT_SIGNATURE,
-    liqPoolAddress,
-    encodeParameters(
-      ["address", "address", "int256", "int256", "uint160", "uint128"],
-      [
-        createAddress("0xabc"),
-        createAddress("0xabc"),
-        BigNumber.from(-amount0),
-        BigNumber.from(amount1),
-        BigNumber.from(1),
-        BigNumber.from(1),
-      ]
-    )
-  );
+  const { data, topics } = iface.encodeEventLog(iface.getEvent("Swap"), [
+    createAddress("0xabc"),
+    createAddress("0xabc"),
+    -amount0,
+    amount1,
+    1,
+    1,
+    1,
+  ]);
+  tx.addAnonymousEventLog(liqPoolAddress, data, ...topics);
 };
 
 describe("Uniswap Swap detection test suite", () => {
@@ -113,5 +109,81 @@ describe("Uniswap Swap detection test suite", () => {
         },
       }),
     ]);
+  });
+
+  it("should return finding for a multihop", async () => {
+    const sender: string = createAddress("0xabc1");
+
+    let liqPools: string[] = [];
+    let tokens: token[] = [];
+    for (let i = 2; i < 7; i++) {
+      liqPools.push(createAddress(`0xabc${i}`));
+    }
+    for (let i = 2; i < 8; i++) {
+      tokens.push({
+        name: `token${i}`,
+        address: createAddress(`0xabcd${i}`),
+        decimals: i.toString(),
+        symbol: `symbol${i}`,
+      });
+    }
+
+    const tx: TransactionEvent = new TestTransactionEvent().setFrom(sender).setHash("0x00");
+
+    for (let i = 0; i < 5; i++) {
+      mockContractCalls(mockProvider, liqPools[i], tokens[i], tokens[i + 1]);
+      mockEvent(tx as TestTransactionEvent, 100000, 200000, liqPools[i]);
+    }
+
+    const findings: Finding[] = await handler(tx);
+
+    expect(findings).toEqual([
+      Finding.fromObject({
+        name: "Uniswap V3 Multihop Swap",
+        description: "Detected Multihop on UniswapV3",
+        alertId: "UNISWAPV3-2",
+        type: FindingType.Info,
+        severity: FindingSeverity.Low,
+        protocol: "Uniswap V3",
+        metadata: {
+          beneficiary: sender,
+          liquidityPools: liqPools.toString(),
+          hash: tx.hash,
+        },
+      }),
+    ]);
+  });
+
+  it("should NOT return finding for a multiswap that includes other protocols", async () => {
+    const sender: string = createAddress("0xabc1");
+
+    let liqPools: string[] = [];
+    let tokens: token[] = [];
+    for (let i = 2; i < 7; i++) {
+      liqPools.push(createAddress(`0xabc${i}`));
+    }
+    for (let i = 2; i < 8; i++) {
+      tokens.push({
+        name: `token${i}`,
+        address: createAddress(`0xabcd${i}`),
+        decimals: i.toString(),
+        symbol: `symbol${i}`,
+      });
+    }
+
+    const tx: TransactionEvent = new TestTransactionEvent().setFrom(sender).setHash("0x00");
+
+    for (let i = 0; i < 4; i++) {
+      mockContractCalls(mockProvider, liqPools[i], tokens[i], tokens[i + 1]);
+      mockEvent(tx as TestTransactionEvent, 100000, 200000, liqPools[i]);
+    }
+
+    //swap from other protocol
+    mockEvent(tx as TestTransactionEvent, 10000, 20000, liqPools[5]);
+    mockProvider.addCallTo(liqPools[4], 0, iface, "factory", { inputs: [], outputs: [createAddress("0x01")] });
+
+    const findings: Finding[] = await handler(tx);
+
+    expect(findings).toStrictEqual([]);
   });
 });
